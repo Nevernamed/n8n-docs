@@ -1,148 +1,145 @@
 ---
-title: n8n v1.0 迁移指南
-description: 版本1中的新功能
+title: n8n v2.0 断裂更改
+description: 打破版本2.0 中的更改
 contentType: 参考
 ---
 
-# n8n v1.0 迁移指南
+# n8n v2.0 断裂更改
 
-此文档提供了一个您应该知道的内容的摘要，然后更新到 n8n版本 1.0。
+n8n v2.0 将很快发布。 本文件突出了重要的突破性变化和你为筹备过渡应采取的行动。 这些更新提高了安全性，简化了配置，并删除了旧功能。
 
-n8n 1.0 的发行标志着n8n在生产环境苛刻的路程中的一个里程碑。 1.0版代表了过去四年为使n8n成为最易利用、强大和多用途的自动化工具而投入的艰苦工作。 n8n 1.0 现已准备就绪，可用于生产。
+n8n 2.0 的发行使n8n继续致力于提供一个安全、可靠和便于生产的自动化平台。 这个主要版本包括重要的加强安全措施和清理废弃的功能。
 
-## 新功能
+## 行为变化
 
-### 代码节点中的 Python 支持
+### 当包含一个等待节点时，返回预期的子工作流数据
 
-虽然JavaScript仍然是默认语言， 您现在也可以选择 Python 作为选项 [代码节点] (/code/code-node.md)，甚至使用 [许多Python 模块] (https://pyodide.org/en/stable/usage/packages-in-pyodide.html#packages-in-pyodide)。 请注意，Python 在 v1.0 之前添加到工作流中的代码节点中不可用。
+之前, 当一个工作流(家长) 调用一个包含等待节点的子工作流(子) 父工作流不正确地接收了从子工作流到等候节点的输入项。
 
-[PR #4295](https://github.com/n8n-io/n8n/pull/4295), [PR #6209](https://github.com/n8n-io/n8n/pull/6209)
+在 v2 中，父工作流现在接收子工作流结束后的输出数据。
 
-### 执行顺序
+**迁移路径：** 审查任何调用子工作流并期望收到输入到等候节点的工作流。 更新这些工作流以处理新的行为，即父工作流从子工作流结束时接收输出。
 
-n8n 1.0 引入了多分支工作流程的新执行顺序：
+### 移除退役服务的节点
 
-在多分支工作流中，n8n需要决定在分支上执行节点的顺序。 以前，n8n执行了每个分支的第一节点，然后执行了每个分支的第二节点，等等。 新的执行命令确保每个分支在开始下一个分支之前完全执行(深度第一)。 从上到下根据它们在画布上的位置执行分支。 如果两个分支处于同一高度, 则最左边的一个会先执行.
+以下节点已被删除，因为它们连接到的外部服务不再可用：
 
-n8n 用于执行多输入节点，只要他们收到第一个输入的数据。 不论是否收到数据，多输入节点的第二个输入节点都自动执行。 新的执行命令载于n8n 1。 简化此行为：节点现在只有在收到数据时才会执行。 和多输入节点需要至少一个输入的数据才能执行。
+- Sponge 节点
+- crowd.dev 节点
+- Kitemaker node
 
-您现有的工作流将使用遗留顺序，而新的工作流将使用 v1 顺序执行。 您可以在 [workflow settings](/workflows/settings.md)中配置每个工作流的执行顺序。
+**迁移路径：** 如果您的工作流使用这些节点，更新或删除这些工作流以避免错误。
 
-[PR #4238](https://github.com/n8n-io/n8n/pull/4238), [PR #6246](https://github.com/n8n-io/n8n/pull/6246), [PR #6507](https://github.com/n8n-io/n8n/pull/6507)
+## 安全
 
-## 废弃的
+### 默认情况下，从代码节点阻止环境变量访问
 
-### MySQL 和 MariaDB
+为了提高安全性，n8n默认会阻止访问代码节点的环境变量。 `N8N_BLOCK_ENV_ACESS_IN_NODE` 的默认值现在设置为 `true`。
 
-n8n 不支持MySQL 和 MariaDB 为 nnn 的存储后端。 这些数据库系统仅供少数用户使用，但需要不断开发和维护。 n8n 建议迁移到 PostgreSQL 以获得更好的兼容性和长期支持。
+**迁移路径：** 如果您的工作流需要访问代码节点中的环境变量，请在您的环境配置中设置`N8N_BLOCK_ENV_ACCESS_IN_NODE=false` 。 对于敏感数据，使用凭据或其他安全方法而不是环境变量。
 
-[PR #6189](https://github.com/n8n-io/n8n/pull/6189)
+### 强制启用设置文件权限
 
-### EXECUTIONS_PROCESS 和 "自己"模式
+n8n 需要严格的文件权限才能提高安全性。 默认情况下，配置文件必须使用 `0600` 权限，这意味着只有文件所有者可以读写。 这种方法类似于SSH如何保护私钥。
 
-以前，您可以使用 `EXECUTIONS_PROCESS` 环境变量来指定执行程序是否应该在 `main` 进程中运行。 此选项和 "own" 模式现已废弃，并将在未来版本nnn中删除。 这是因为它增加了代码的复杂性而提供了边际好处。 从 n8n 1.0开始，`main` 将是新的默认值。
+**迁移路径：** 在v2.0之前测试此行为，设置`N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true`。 如果您的环境不支持文件权限(例如在Windows上)，请设置 `N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false` 来禁用此要求。
 
-请注意，执行“main”模式的执行速度快于“own”模式的执行速度。 然而，如果一个工作流消耗的内存超过可用的内存，它可能会崩溃整个n8n应用程序，而不仅仅是工人线程。 为了缓解这个问题，请确保分配足够的系统资源或配置 [队列模式](/hosting/scaling/queue-mode.md) 以在多个工人之间分配执行操作。
+### 默认启用任务运行器
 
-[PR #6196](https://github.com/n8n-io/n8n/pull/6196)
+n8n 将默认启用[任务运行器](/hosting/configuration/task-runners.md)来改善安全和隔离。 所有代码节点执行将运行任务运行器。
 
-## 打破更改
+**迁移路径：** 升级到 v2.0 之前，设置 N8N_RUNNERS_ENABLED=true 测试此行为。 请确保您的基础设施符合运行任务的要求。 对于额外的安全性，请考虑使用 [外部模式] (/hosting/configuration/task-runners.md#external-mode)。
 
-### 停靠栏
+### 从 `n8nio/n8n` 停靠图像中移除任务运行器
 
-#### 权限更改
+从 v2.0开始，主`n8nio/n8n` 停靠器将不再包括外部模式下的任务。 您必须使用单独的 `n8nio/runners` Docker 图像来运行外部模式下的任务运行器。
 
-使用基于 Docker 的部署时，n8n 进程现在由用户 `node` 而不是 `root` 来运行。 这种变化增加了安全。
+**迁移路径:** 如果你使用外部模式运行停靠在停靠码头的任务, 更新你的设置以使用 `n8nio/runners` 图像而不是 `n8nio/n8n` 。
 
-如果启动n8n时，您的n8n容器日志中出现权限错误， 您可能需要通过执行 Docker 主机上的以下命令来更新权限：
+### 删除基于 Pyodide 的 Python 代码节点
 
-```bash
-docker 运行 --rm -it --user root -v ~/.n8n:/home/node/.n8n --entrypoint chown n8nio/base:16 -R node:node /home/node/.n8n
-```
+n8n 将移除基于 Pydodie 的 Python 代码节点，并将其替换为 [基于任务的运行](/hosting/configuration/task-runners.md)，它使用原生的 Python 来提高安全性能和性能。 从 v2.0 开始，您只能在[外部模式](/hosting/configuration/task-runners.md#external-mode)中使用任务运行器的 Python 代码节点。
 
-#### 图像删除
+原生的 Python 代码节点不支持内置变量，如`_input` 或点访问符，这些变量可以在 Pyodide 版本中获得。 欲了解详情，请查看[代码节点文档](/integrations/builtin/core-nodes/n8n-nodes-base.code/index.md#python-native-beta)。
 
-我们已经删除 Debian 和 RHEL 图像。 如果您在使用这些图像，您需要更改您使用的图像。 这不应导致任何错误，除非您根据其中一个图像制作了自定义图像。
+**迁移路径：** 要继续在代码节点中使用 Python，请在外部模式中设置任务运行器，并审查您现有的 Python 代码节点兼容性。
 
-#### 入口点变化
+### 默认禁用执行命令和 LocalFileTrigger 节点
 
-容器的入口点已经改变，您不再需要指定 n8n 命令。 如果你先前运行了 `n8n worker --contamincy=5` 现在是 `worker --contamincy=5`
+n8n 将默认禁用 rhe `ExecuteCommand` 和 `LocalFileTrigger` 节点，因为它们构成安全风险。 这些节点允许用户运行任意命令和访问文件系统。
 
-[PR #6365](https://github.com/n8n-io/n8n/pull/6365)
+**迁移路径：** 如果您需要使用这些节点， 通过更新 `NODE_EXCLUDE` 环境变量，从您的 n8n 配置中移除这些已禁用节点列表。 例如，设置 `NODES_EXCLUDE="[]` 以启用所有节点，或仅移除您需要的特定节点。
 
-### 由于表达式错误导致工作流失败
+### 默认需要对 OAuth 回调URL进行身份验证
 
-由于表达式中的语法错误或运行时错误，如引用不存在节点的表达式，工作流程执行可能失败。 虽然表达式已经在前端出现了错误，但是这种改变可以确保n8n也会在后端出现错误，它们以前曾被静默忽略。 若要接收失败的工作流通知，n8n建议在工作流设置下设置一个“错误流程”。
+n8n 默认情况下OAuth 回调端点需要身份验证。 `N8N_SKIP_AUTH_ON_OOAUTH_CALLBACK` 的默认值将从 `true` (无需认证) 更改为 `false` (需要认证)。
 
-[PR #6352](https://github.com/n8n-io/n8n/pull/6352)
+**迁移路径：** 在升级到 v2.0 之前，设置 `N8N_SKIP_AUTH_ON_OAUTH_CALLBACK=false` 并测试您的 OAuth 集成以确保它们能够使用身份验证。
 
-### 强制所有者帐户
+### 设置N8N_RESTRICT_FILE_ACCSESS_TO 的默认值
 
-此更改使得[用户管理](/user-management/index.md)成为强制性的，并取消了对其他认证方法的支持，例如BasicAuth 和 外部JWT。 请注意， [n8n.cloud](https://n8n.cloud/)或自定义计划的允许用户数量仍然因您的订阅而异。
+n8n 将设置一个 `N8N_RESTRICT_FILE_ACCSESS_TO` 的默认值来控制文件操作的位置。 这影响了 "ReadWriteFile" 和 "ReadBinaryFiles" 节点。 默认情况下，这些节点只能访问在 n8n 主文件夹内的 `./data` 目录中的文件。
 
-[PR #6362](https://github.com/n8n-io/n8n/pull/6362)
+**迁移路径：** 审查您使用文件节点的工作流，并确保他们只访问允许目录中的文件。 如果您需要允许访问其他目录，请将`N8N_RESTTRICT_FILE_ACCESS_TO`环境变量设置为您想要的路径。
 
-### 安装自定义节点的目录
+### 将N8N_GIT_NODE_DISABLE_BARE_REPOS 的默认值更改为true
 
-n8n 将不再从其全局`node_modules`目录中加载自定义节点。 相反，您必须安装(或链接)它们到 "~/.n8n/custom" (或由 `N8N_CUTOM_EXTENSIONS` 定义的目录)。 npm 软件包的自定义节点将位于"~/.n8n/nodes"中。
-如果你有使用`npm link`链接链接链接链接到全局`node_modules`目录的自定义节点, 你需要将它们再次链接到 `~/.n8n/nodes` 。
+默认情况下，Git节点将基于安全原因阻止bare仓库。 `N8N_GIT_NODE_DISABLE_BARE_REPOS` 的默认值设置为`true`, 这意味着除非您更改此设置，否则将禁用bare仓库。
 
-[PR #6396](https://github.com/n8n-io/n8n/pull/6396)
+**迁移路径：** 如果您的工作流需要使用bare 仓库，请在您的环境配置中设置`N8N_GIT_NODE_DISABLE_BARE_REPOS=false` 以启用它们。
 
-### WebSocket
+## 数据
 
-`N8N_PUSH_BACKEND`环境变量可以用于配置两种可用方法中的一种：`sse`和`websocket`。 从 n8n 1.0开始，`websocket` 是默认方法。
+### 拖放MySQL/MariaDB 支持
 
-[PR #6196](https://github.com/n8n-io/n8n/pull/6196)
+n8n 将不再支持 MySQL 和 MariaDB 作为存储后端。 这种支持在 v1.0 中被废弃。 如需最佳兼容性和长期支持，请使用 PostgreSQL
 
-### 日期转换函数
+**迁移路径：** 在升级到 v2.0之前，使用数据库迁移工具将您的数据从 MySQL 或 MariaDB 移动到 PostgreSQL 或 SQLite。
 
-n8n提供按日期运行的各种转换功能。 这些函数可以返回 JavaScript `Date` 或 Luxon `DateTime` 对象。 有了新的行为，返回类型总是匹配输入的。 如果您在 `Date` 上调用日期转换函数，它返回一个 `Date` 。 同样，如果你在 `DateTime` 对象上调用它，它返回一个 `DateTime` 对象。
+### 移除 SQLite 旧版驱动程序
 
-要识别可能受此更改影响的任何工作流和节点，您可以使用此[实用工作流](https://n8n.io/workflows/1929-v1-helper-find-params-with-affected-expressions/)。
+由于可靠性问题，n8n 将删除遗留的 SQLite 驱动程序。 汇集驱动程序将成为默认值，并且仅限 SQLite 驱动程序。 集合驱动程序使用 WAL模式、单个写入连接和一组读连接。 我们的基准表明，它可以更快地达到10倍。
 
-欲了解更多关于日期转换功能的信息，请参阅[正式文件](/code/builtin/data-transformation-functions/dates.md)。
+**迁移路径：** `sqlite-pooled`驱动程序将自动成为默认。 您现在可以通过设置 `DB_SQLITE_POOL_SIZE` 到大于`0`的值来启用池。 默认池大小将设置为 \`2'。
 
-[PR #6435](https://github.com/n8n-io/n8n/pull/6435)
+### 移除内存二进制数据模式
 
-### 执行数据保留
+n8n 将移除`N8N_DEFAULT_BINARY_DATA_MODE`的默认模式，它在内存中存储执行二进制数据。 文件系统模式将成为更好的性能和稳定性的唯一选项。 `N8N_AVAILABLE_BINARY_DATA_MODES` 设置也将被删除，所以模式现在只能由`N8N_DEFAULT_BINARY_DATA_MODE`决定。
 
-从 n8n 1.0开始，所有成功、失败和手动工作流执行将默认保存。 这些设置可以在"工作流设置"下的每个工作流或者在全局使用各自的环境变量进行修改。 此外，默认情况下，将启用`EXECUTIONS_DATA_PRUNE`设置，设置为10,000个。 这些默认设置旨在防止使用 SQLite时性能退化。 请确保根据您的个人要求和系统容量配置它们。
+**迁移路径：** 文件系统模式将被自动使用。 请确保您的 n8n 实例有足够的磁盘空间来存储二进制数据。 For details, see the [binary data configuration](/hosting/configuration/environment-variables/binary-data.md).
 
-[PR #6577](https://github.com/n8n-io/n8n/pull/6577)
+## 配置与环境
 
-### 删除N8N_USE_DEPRECATED_REQUEST_LIB
+### 升级 Dotenv
 
-遗留的 'request' 库已经废弃了一段时间。 截至n8n 1。 ，通过设置 `N8N_USE_DEPRECATED_REQUEST_LIB` 环境变量返回HTTP请求节点的能力已被完全删除。 HTTP 请求节点现在总是使用新的 `HttpRequest` 接口。
+n8n 使用 `dotenv` 库从`.env` 文件中加载环境配置。 库将从 8.6.0 版本升级到最新版本，这可能会更改 `.env` 文件的解析方式。 关键的突破性变化包括：
 
-如果您构建自定义节点，请参阅[HTTP 请求助手](/integrations/creating-nodes/build/reference/http-helpers.md) 获取关于迁移到新接口的更多信息。
+- Backtick 支持 ([#615](https://github.com/motdotla/dotenv/pull/615)：如果您的值包含背景，将它们换成单引号或双引号。
+- 多行支持：您现在可以使用多行值。
+- `#` 标志着评论的开头：以# 开头的行被当作评论。
 
-[PR #6413](https://github.com/n8n-io/n8n/pull/6413)
+**迁移路径：** 审阅[dotenv changelog](https://github.com/motdotla/dotenv/blob/master/CHANGELOG.md)，并更新您的 `.env` 文件以确保与新版本兼容。
 
-### 已移除WEBHOOK_TUNNEL_URL
+### 删除 n8n --tunnel 选项
 
-截至0.227.0版本，n8n已将`WEBHOOK_TUNNEL_URL` 配置选项更名为`WEBHOOK_URL'。 在 n8n 1.0, `WEBHOOK_TUNNEL_URL\` 已被删除。 更新您的设置以反映新的名称。 For more information about this configuration option, refer to [the docs](/hosting/configuration/configuration-examples/webhook-url.md).
+`n8n --tunnel `command-line 选项将在 v2.0 中删除。
 
-[PR #1408](https://github.com/n8n-io/n8n/pull/1408)
+**迁移路径:** 如果你目前使用 `--tunnel` 选项来开发或测试. 切换到替代隧道解决方案，例如ngrok、localtunnel 或 Cloudflare Tunnel。 更新您的工作流和文档以反映此更改。
 
-### 删除节点16支持
+### 移除 QUEUE_WORKER_MAX_STALLED_COUNT
 
-n8n现在要求编号18.17.0或以上。
+“QUEUE_WORKER_MAX_STALLED_COUNT”环境变量和停工的Bull重试机制将被删除，因为它们常常造成混乱，无法可靠地工作。
 
-## 正在更新到 n8n 1.0
+**迁移路径:** 从您的配置中删除此环境变量。 升级后，n8n将不再自动重试已停顿的任务。 如果您需要处理已停顿的作业，请考虑实现您自己的重试逻辑或监测。
 
-1. 创建一个完整备份的 n8n。
-2. n8n 建议更新到最新n8n 0.x 版本，然后更新到n8n 1.x。 这将使您能够将任何潜在问题指向正确的发布。 一旦你验证n8n 0.x在没有任何问题的情况下启动，下一步就开始。
-3. 仔细阅读上面的 [Deprecations](#deprecations和 [打破变化](#breaking-changes) 部分，以评估它们可能如何影响您的设置。
-4. 更新到 n8n 1.0：
-   - 测试版期间（2023年7月24日之前）：如果使用 Docker，拉取停靠栏的图像。
-   - 2023年7月24日之后：如果使用 Docker，拉取“最新”Docker图像。
-5. 如果您遇到任何问题，重新部署之前的 n8n 版本并还原备份。
+## CLI & 工作流
+
+### 移除CLI命令操作以激活所有工作流
+
+CLI 命令`update:workflow --all --active=true`, 它一次激活所有工作流, 将被删除, 以防止在生产环境中意外激活工作流。
+
+**迁移路径：** 使用 API 或 UI 在一次或一次控制的小批量中激活一个工作流。 这有助于您避免意外的后果，更好地控制工作流激活。
 
 ## 报告问题
 
-如果您在更新到 n8n 1.0过程中遇到任何问题，请在社区 [forum](https://community.n8n.io/)中寻求帮助。
-
-## 谢谢你
-
-我们要花一点时间向我们的所有用户表示感谢，感谢他们的持续支持和反馈。 你的贡献对于帮助我们使n8n成为最好的自动化工具是非常宝贵的。 当我们着手发布1.0版及其他版本时，我们很高兴继续与你合作。 感谢您成为我们旅程的一部分！
+如果您在升级到 n8n 2.0时遇到任何问题，请访问社区 [forum](https://community.n8n.io/) 以获得帮助和支持。
